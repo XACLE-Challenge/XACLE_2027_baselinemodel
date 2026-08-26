@@ -1,42 +1,37 @@
+import argparse
 import os
 import torch
-import numpy as np
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
-from models.Byola import get_normalizer
 from models.xacle_baseline_model import XACLEBaselineModel
 from datasets.xacle_baseline_dataset import get_infdataset
 import utils.utils as utils
+from utils.checkpoint import load_trainable_checkpoint
+from utils.config import load_config
+from utils.runtime import seed_everything
 from tqdm import tqdm
 import csv
-import sys
-import os
 
 def inference():
     # -------- initial setup --------
-    if len(sys.argv) < 2:
-        print("Usage: ptyhon inference.py chkpt_dir_name")
-        sys.exit(1)
-    chkpt_dir = os.path.join("./chkpt", sys.argv[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("checkpoint_directory")
+    parser.add_argument("dataset", nargs="?", choices=["validation", "test"], default="validation")
+    args = parser.parse_args()
+
+    chkpt_dir = args.checkpoint_directory
     if not os.path.isdir(chkpt_dir):
-        print(f"Error: CheckPoint Directory {chkpt_dir} does not exist.")
-        sys.exit(1)
+        chkpt_dir = os.path.join("./chkpt", chkpt_dir)
+    if not os.path.isdir(chkpt_dir):
+        parser.error(f"checkpoint directory does not exist: {chkpt_dir}")
     chkpt_path = os.path.join(chkpt_dir, "best_model.pt")
     cfg_path   = os.path.join(chkpt_dir, "config.json")
     if not os.path.isfile(chkpt_path):
-        print(f"Error: Expected CheckPoint does not exist.")
-        sys.exit(1)
+        parser.error(f"checkpoint does not exist: {chkpt_path}")
     if not os.path.isfile(cfg_path):
-        print(f"Error: Expected Config file does not exist")
-    if len(sys.argv) == 2:
-        dataset_key = "validation"
-    elif sys.argv[2] == "validation":
-        dataset_key = "validation"
-    elif sys.argv[2] == "test":
-        dataset_key = "test"
-    else:
-        print("Error: Specify the evaluation dataset using the third command-line arguments.: 'validation' or 'test'")
-    cfg = utils.load_config(cfg_path)
+        parser.error(f"run config does not exist: {cfg_path}")
+    dataset_key = args.dataset
+    cfg = load_config(cfg_path)
+    seed_everything(cfg["seed"])
     dataset_label   = f"{dataset_key}_list"
     dataset_list    = cfg[dataset_label]
     dataset_wav_dir = os.path.join(cfg["wav_dir"], dataset_key)
@@ -47,14 +42,12 @@ def inference():
     device = torch.device(cfg["device"])
     # -------------------------------
 
-    # -------- tokenizer / dataset / dataloader --------
-    tokenizer = AutoTokenizer.from_pretrained(cfg["text_encoder"]["pretrained_model"], cache_dir="./hf_cache")
+    # -------- dataset / dataloader --------
     test_ds   = get_infdataset(
         txt_file_path=dataset_list,
         wav_dir=dataset_wav_dir,
-        tokenizer=tokenizer,
         max_sec=cfg["max_len"],
-        sr=cfg["audio_encoder"]["sample_rate"]
+        sr=cfg["m2d_clap"]["sample_rate"]
     )
     test_loader = DataLoader(
         test_ds,
@@ -65,20 +58,20 @@ def inference():
     )
     # -------------------------------------------------
 
-    # -------- model / normalizer --------
+    # -------- model --------
     model = XACLEBaselineModel(cfg, device).to(device)
-    chkpt = torch.load(chkpt_path, map_location=device)
-    model.load_state_dict(chkpt, strict=True)
+    load_trainable_checkpoint(model, chkpt_path, map_location=device)
     model.eval()
-    normalizer = get_normalizer(cfg, dataset_label)
     # ------------------------------------
 
     # -------- run inference --------
     rows = []
     with torch.no_grad():
-        for batch in tqdm(test_loader):
+        for batch_index, batch in enumerate(tqdm(test_loader)):
+            if batch_index >= cfg.get("max_inference_batches", len(test_loader)):
+                break
             batch = utils.move_to_device(batch, device)
-            pred  = model.forward(batch, normalizer)
+            pred  = model(batch)
             pred  = pred.detach().cpu().item()
             pred_mos = pred * 5.0 + 5.0
             rows.append({
