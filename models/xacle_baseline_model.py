@@ -1,106 +1,82 @@
 import torch
 import torch.nn as nn
-from .Roberta import RoBERTa as TextEncoder
-from .Byola import Byola as AudioEncoder
+import torch.nn.functional as F
+
+from .m2d import M2DCLAPEncoder
+
 
 class XACLEBaselineModel(nn.Module):
-    def __init__(self, cfg, device):
+    def __init__(self, cfg, device=None):
         super().__init__()
-        self.device = device
-        ## Text Encoder
-        self.text_encoder = TextEncoder(
-            model_name  = cfg["text_encoder"]["pretrained_model"],
-            device      = self.device
+        encoder_cfg = cfg["m2d_clap"]
+        model_cfg = cfg["model"]
+
+        self.encoder = M2DCLAPEncoder(
+            checkpoint_path=encoder_cfg["checkpoint"],
+            freeze=encoder_cfg.get("freeze", True),
+            cache_dir=encoder_cfg.get("cache_dir", "./hf_cache"),
         )
-        ## Audio Encoder
-        self.audio_encoder = AudioEncoder(
-            model_path    = cfg["audio_encoder"]["byola_model"],
-            device        = self.device,
-            n_mels        = cfg["audio_encoder"]["n_mels"],
-            feature_d     = cfg["audio_encoder"]["feature_d"],
-            sr            = cfg["audio_encoder"]["sample_rate"],
-            n_fft         = cfg["audio_encoder"]["n_fft"],
-            win_length    = cfg["audio_encoder"]["win_length"],
-            hop_length    = cfg["audio_encoder"]["hop_length"],
-            fmin          = cfg["audio_encoder"]["f_min"],
-            fmax          = cfg["audio_encoder"]["f_max"]
+        self.embedding_dim = encoder_cfg["embedding_dim"]
+        self.normalize_embeddings = encoder_cfg.get("normalize_embeddings", True)
+        self.projector = Projector(
+            input_dim=self.embedding_dim * 2,
+            hidden_dim=model_cfg["projector"]["hidden_dim"],
+            output_dim=model_cfg["projector"]["output_dim"],
+            activation=model_cfg["projector"]["activation"],
+            dropout=model_cfg["projector"]["dropout"],
         )
-        ## LDConditioner
-        self.ldconditioner = LDConditioner(
-            input_dim        = cfg['model']['conditioner']['input_dim'],
-            rnn_hidden_size  = cfg['model']['conditioner']['rnn_hidden_size'],
-            rnn_num_layers   = cfg['model']['conditioner']['rnn_num_layers']
-        )
-        ## Projection
-        self.projection    = Projection(
-            input_dim       = cfg['model']['projection']['input_dim'],
-            hidden_dim      = cfg['model']['projection']['hidden_dim'],
-            activation      = cfg['model']['projection']['activation'],
-            range_clipping  = cfg['model']['projection']['range_clipping'],
-            dropout         = cfg['model']['projection']['dropout']
+        self.score_predictor = ScorePredictor(
+            input_dim=model_cfg["projector"]["output_dim"],
+            range_clipping=model_cfg["score_predictor"]["range_clipping"],
         )
 
-    def forward(self, batch: dict, normalizer):
-        # text embeddig (B, 1024)
-        txt_emb   = self.text_encoder(batch["caption_tokens"])
-        # audio embedding (B, 250, 3072)
-        audio_emb = self.audio_encoder(batch["wavs"], normalizer)
-        # concat feature
-        cond_emb  = self.ldconditioner(audio_emb, txt_emb)
-        # score predict
-        mos_hat   = self.projection(cond_emb)
+    def forward(self, batch: dict):
+        audio_emb = self.encoder.encode_audio(batch["wavs"])
+        text_emb = self.encoder.encode_text(batch["captions"])
+        self._validate_embeddings(audio_emb, text_emb)
 
-        return mos_hat
+        if self.normalize_embeddings:
+            audio_emb = F.normalize(audio_emb.float(), dim=-1)
+            text_emb = F.normalize(text_emb.float(), dim=-1)
 
-class LDConditioner(nn.Module):
-    def __init__(self, input_dim, rnn_hidden_size, rnn_num_layers,
-                 batch_first=True, bidirectional=True):
+        joint_emb = torch.cat([audio_emb, text_emb], dim=-1)
+        return self.score_predictor(self.projector(joint_emb))
+
+    def _validate_embeddings(self, audio_emb, text_emb):
+        expected = (audio_emb.size(0), self.embedding_dim)
+        if tuple(audio_emb.shape) != expected:
+            raise ValueError(
+                f"Unexpected M2D-CLAP audio embedding shape: {tuple(audio_emb.shape)}; "
+                f"expected {expected}"
+            )
+        if tuple(text_emb.shape) != expected:
+            raise ValueError(
+                f"Unexpected M2D-CLAP text embedding shape: {tuple(text_emb.shape)}; "
+                f"expected {expected}"
+            )
+
+class Projector(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, activation="ReLU", dropout=0.3):
         super().__init__()
-        self.rnn = nn.LSTM(
-            input_size    = input_dim,              # 4096
-            hidden_size   = rnn_hidden_size,        #  512
-            num_layers    = rnn_num_layers,         #    1
-            batch_first   = batch_first,            # True
-            bidirectional = bidirectional           # True
-        )
-        self.out_dim = rnn_hidden_size * (2 if bidirectional else 1)    # 1024
-
-    def forward(self, audio_emb, text_emb):
-        """
-        audio_emb       : (B, T, D_a)  --  Byola feature per frame
-        text_emb        : (B, D_t)     --  RoBERTa CLS embedding
-        """
-        txt_expand = text_emb.unsqueeze(1).expand(-1, audio_emb.size(1), -1)
-        feat = torch.cat([audio_emb, txt_expand], dim=2)                # (B, T, D_a+D_t)
-
-        # Bi-LSTM
-        out, _ = self.rnn(feat)     # (B, T, 1024)
-        first  = out[:, 0, :]       # (B, 1024)
-        last   = out[:, -1, :]      # (B, 1024)
-        return (first + last) / 2   # (B, 1024)
-    
-class Projection(nn.Module):
-    def __init__(self, input_dim, hidden_dim,
-                 activation: str = "ReLU",
-                 range_clipping: bool = False, dropout: float = .3):
-        super().__init__()
-        self.range_clipping = range_clipping
-        self.act = getattr(nn, activation)() if isinstance(activation, str) else activation 
+        activation_layer = getattr(nn, activation)
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
-            self.act,
+            activation_layer(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1)
+            nn.Linear(hidden_dim, output_dim),
+            activation_layer(),
         )
-        if self.range_clipping:
-            self.out_act = nn.Tanh()
 
     def forward(self, x):
-        """
-        x : (B, 1024)
-        """
-        x = self.net(x) # (B, 1)
-        if self.range_clipping:
-            x = self.out_act(x)
-        x = x.squeeze(-1)   # (B, )
-        return x
+        return self.net(x)
+
+
+class ScorePredictor(nn.Module):
+    def __init__(self, input_dim, range_clipping=False):
+        super().__init__()
+        self.linear = nn.Linear(input_dim, 1)
+        self.range_clipping = range_clipping
+
+    def forward(self, x):
+        score = self.linear(x).squeeze(-1)
+        return torch.tanh(score) if self.range_clipping else score

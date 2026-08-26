@@ -1,15 +1,7 @@
-import json
 import torch
 import sys
 from collections.abc import Mapping, Sequence
 from transformers.tokenization_utils_base import BatchEncoding
-
-def load_config(config_path = "config.json"):
-    with open(config_path, 'r') as f:
-        cfg = json.load(f)
-    if cfg.get("device") == "cuda" and not torch.cuda.is_available():
-        cfg["device"] = "cpu"
-    return cfg
 
 class Logger(object):
     def __init__(self, filename):
@@ -25,6 +17,8 @@ class Logger(object):
         self.log.flush()
 
 def json_dump(json_path, data):
+    import json
+
     with open(json_path, "w", encoding="utf-8") as f:
          json.dump(data, f, ensure_ascii=False, indent=4)
     return

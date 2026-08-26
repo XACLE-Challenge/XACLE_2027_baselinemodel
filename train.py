@@ -1,179 +1,220 @@
+import argparse
 import os
-import torch
-import numpy as np
+import sys
 import time
-from torch.utils.data import DataLoader
-from scipy.stats import spearmanr
-from transformers import AutoTokenizer
+from datetime import datetime
 
-from models.Byola import get_normalizer
-from models.xacle_baseline_model import XACLEBaselineModel
+import numpy as np
+import torch
+from scipy.stats import spearmanr
+from torch.utils.data import DataLoader
+
 from datasets.xacle_baseline_dataset import get_dataset
 from losses.loss_function import get_loss_function
+from models.xacle_baseline_model import XACLEBaselineModel
+from utils.checkpoint import save_trainable_checkpoint
+from utils.config import load_config
+from utils.runtime import seed_everything, seed_worker
+from utils.utils import Logger, json_dump, move_to_device
 
-import utils.utils as utils
 
-import sys
-from datetime import datetime
-import json
-
-def train(cfg):
-    # -------- initial setup --------
-    now = datetime.now().strftime("%Y%m%d_%H%M%S")      # ex: 20250907_0000
-    chkpt_dir = os.path.join(cfg["output_dir"], now)    # ex: ./chkpt/20250907_0000
-    os.makedirs(chkpt_dir, exist_ok=True)
-    utils.json_dump(os.path.join(chkpt_dir, "config.json"), cfg)
-    log_txt_path = os.path.join(chkpt_dir, "log.txt")
-    sys.stdout = utils.Logger(log_txt_path)
-    device = torch.device(cfg["device"])
-    # -------------------------------
-
-    # -------- tokenizer / dataset / dataloader --------
-    tokenizer = AutoTokenizer.from_pretrained(cfg["text_encoder"]["pretrained_model"], cache_dir="./hf_cache")
-    train_ds = get_dataset(
+def build_dataloaders(cfg):
+    sample_rate = cfg["m2d_clap"]["sample_rate"]
+    train_dataset = get_dataset(
         cfg["train_list"],
         os.path.join(cfg["wav_dir"], "train"),
-        tokenizer=tokenizer,
         max_sec=cfg["max_len"],
-        sr=cfg["audio_encoder"]["sample_rate"],
-        org_max=10.0,
-        org_min=0.0
+        sr=sample_rate,
     )
-    val_ds   = get_dataset(
+    validation_dataset = get_dataset(
         cfg["validation_list"],
         os.path.join(cfg["wav_dir"], "validation"),
-        tokenizer=tokenizer,
         max_sec=cfg["max_len"],
-        sr=cfg["audio_encoder"]["sample_rate"],
-        org_max=10.0,
-        org_min=0.0
+        sr=sample_rate,
     )
+
+    generator = torch.Generator().manual_seed(cfg["seed"])
+    common = {
+        "num_workers": cfg["num_workers"],
+        "worker_init_fn": seed_worker,
+        "generator": generator,
+        "persistent_workers": cfg["num_workers"] > 0,
+    }
     train_loader = DataLoader(
-        train_ds,
+        train_dataset,
         batch_size=cfg["batch_size"],
         shuffle=True,
-        num_workers=cfg["num_workers"],
-        collate_fn=train_ds.collate_fn,
-        drop_last=True
+        collate_fn=train_dataset.collate_fn,
+        drop_last=True,
+        **common,
     )
-    val_loader = DataLoader(
-        val_ds, 
-        batch_size=cfg["val_batch_size"], 
+    validation_loader = DataLoader(
+        validation_dataset,
+        batch_size=cfg["val_batch_size"],
         shuffle=False,
-        num_workers=cfg["num_workers"], 
-        collate_fn=val_ds.collate_fn
+        collate_fn=validation_dataset.collate_fn,
+        **common,
     )
-    # -------------------------------------------------
+    return train_loader, validation_loader
 
-    # -------- model / loss / opt --------
-    model = XACLEBaselineModel(cfg, device).to(device)
-    loss_fn  = get_loss_function(cfg["loss"])
-    opt = torch.optim.Adam(model.parameters(), lr=cfg["lr"], weight_decay=1e-5)
+
+def train_one_epoch(model, loader, loss_fn, optimizer, device, max_batches=None):
+    model.train()
+    total_loss = 0.0
+    batches = 0
+    sample_predictions = sample_targets = None
+
+    for batch_index, batch in enumerate(loader):
+        if max_batches is not None and batch_index >= max_batches:
+            break
+        batch = move_to_device(batch, device)
+        optimizer.zero_grad()
+        predictions = model(batch)
+        loss = loss_fn(predictions, batch["scores"], batch["num_class"])
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        batches += 1
+        sample_predictions = denormalize_scores(predictions.detach())
+        sample_targets = denormalize_scores(batch["scores"].detach())
+
+    if batches == 0:
+        raise RuntimeError("Training loader produced no batches")
+    return total_loss / batches, sample_predictions, sample_targets
+
+
+def validate(model, loader, loss_fn, device, max_batches=None):
+    model.eval()
+    total_loss = 0.0
+    batches = 0
+    predictions_all = []
+    targets_all = []
+    sample_predictions = sample_targets = None
+
+    with torch.inference_mode():
+        for batch_index, batch in enumerate(loader):
+            if max_batches is not None and batch_index >= max_batches:
+                break
+            batch = move_to_device(batch, device)
+            predictions = model(batch)
+            loss = loss_fn(predictions, batch["scores"], batch["num_class"])
+
+            denormalized_predictions = denormalize_scores(predictions)
+            denormalized_targets = denormalize_scores(batch["scores"])
+            total_loss += loss.item()
+            batches += 1
+            predictions_all.extend(denormalized_predictions)
+            targets_all.extend(denormalized_targets)
+            sample_predictions = denormalized_predictions
+            sample_targets = denormalized_targets
+
+    if batches == 0:
+        raise RuntimeError("Validation loader produced no batches")
+    srcc = spearmanr(targets_all, predictions_all).correlation
+    mse = float(np.mean((np.asarray(targets_all) - np.asarray(predictions_all)) ** 2))
+    return total_loss / batches, srcc, mse, sample_predictions, sample_targets
+
+
+def denormalize_scores(scores):
+    return (scores.detach().cpu().numpy() * 5.0 + 5.0).tolist()
+
+
+def format_scores(scores):
+    return [f"{value:05.2f}" for value in scores]
+
+
+def build_training_components(cfg, device):
+    model = XACLEBaselineModel(cfg).to(device)
+    loss_fn = get_loss_function(cfg["loss"])
+    trainable_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
+    if not trainable_parameters:
+        raise RuntimeError("Model has no trainable parameters")
+    optimizer = torch.optim.Adam(
+        trainable_parameters,
+        lr=cfg["lr"],
+        weight_decay=cfg.get("weight_decay", 1e-5),
+    )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        opt,
-        mode="min",
-        factor=0.5,
-        patience=5
+        optimizer, mode="min", factor=0.5, patience=5
     )
-    print("Prepare normalizer")
-    normalizer_train = get_normalizer(cfg, "train_list")
-    normalizer_eval  = get_normalizer(cfg, "validation_list")
-    best_srcc, patience = -np.inf, 0
-    # ------------------------------------
-    print("train loader:",len(train_loader))
+    return model, loss_fn, optimizer, scheduler
+
+
+def train(cfg):
+    seed_everything(cfg["seed"])
+    run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_directory = os.path.join(cfg["output_dir"], run_name)
+    os.makedirs(run_directory, exist_ok=True)
+    json_dump(os.path.join(run_directory, "config.json"), cfg)
+    sys.stdout = Logger(os.path.join(run_directory, "log.txt"))
+    device = torch.device(cfg["device"])
+
+    train_loader, validation_loader = build_dataloaders(cfg)
+    model, loss_fn, optimizer, scheduler = build_training_components(cfg, device)
+    trainable_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_count = sum(p.numel() for p in model.parameters())
+    print(f"Device: {device}")
+    print(f"Seed: {cfg['seed']}")
+    print(f"Trainable parameters: {trainable_count:,} / {total_count:,}")
+    print(f"Train batches: {len(train_loader)}")
+
+    best_srcc = -np.inf
+    patience = 0
+    best_model_path = os.path.join(run_directory, "best_model.pt")
+
     for epoch in range(cfg["epochs"]):
-        model.train()
         start_time = time.time()
-        epoch_loss = 0.0
-        for batch in train_loader:
-            # ---------- setup ----------
-            batch = utils.move_to_device(batch, device)
-            opt.zero_grad()
-            # ---------------------------
+        train_loss, train_predictions, train_targets = train_one_epoch(
+            model,
+            train_loader,
+            loss_fn,
+            optimizer,
+            device,
+            cfg.get("max_train_batches"),
+        )
+        validation_loss, srcc, mse, validation_predictions, validation_targets = validate(
+            model,
+            validation_loader,
+            loss_fn,
+            device,
+            cfg.get("max_val_batches"),
+        )
+        scheduler.step(validation_loss)
 
-            # ---------- forward ----------
-            pred = model.forward(batch, normalizer_train)   # (B, )
-            # -----------------------------
+        elapsed = time.time() - start_time
+        print(
+            f"Epoch {epoch:04d} completed in {elapsed:.2f} seconds | "
+            f"Train Loss: {train_loss:.4f} | Val Loss: {validation_loss:.4f} | "
+            f"Val SRCC / MSE: {srcc:.4f}, {mse:.4f}"
+        )
+        print(f"\ttrain pred: {format_scores(train_predictions)}")
+        print(f"\ttrain gt:   {format_scores(train_targets)}")
+        print(f"\tval pred:   {format_scores(validation_predictions)}")
+        print(f"\tval gt:     {format_scores(validation_targets)}")
 
-            # ---------- loss ----------
-            loss = loss_fn(pred, batch["scores"], batch["num_class"])
-            loss.backward()
-            opt.step()
-            epoch_loss += loss.item()
-            # --------------------------
-
-        # ---------- Train Epoch loss ----------  
-        avg_train_loss = epoch_loss / len(train_loader)
-        # --------------------------------------
-
-        ################################################################
-        train_pred = (pred.detach().cpu().numpy() * 5 + 5).tolist()
-        train_gt   = (batch["scores"].detach().cpu().numpy() * 5 + 5).tolist()
-        ################################################################
-        
-        # ---------- Validation ----------
-        model.eval()
-        val_loss = 0.0
-        preds, gts = [], []
-        with torch.no_grad():
-            for batch in val_loader:
-                batch = utils.move_to_device(batch, device)
-                pred  = model.forward(batch, normalizer_eval)
-                loss = loss_fn(pred, batch["scores"], batch["num_class"])
-                val_loss += loss.item()
-                preds.extend((pred.cpu().numpy() * 5 + 5).tolist())
-                gts.extend((batch["scores"].cpu().numpy() * 5 + 5).tolist())
-        avg_val_loss = val_loss / len(val_loader)
-        srcc = spearmanr(gts, preds).correlation
-        mse  = np.mean((np.array(gts) - np.array(preds)) ** 2)
-        # --------------------------------
-
-        ################################################################
-        val_pred = (pred.detach().cpu().numpy() * 5 + 5).tolist()
-        val_gt   = (batch["scores"].detach().cpu().numpy() * 5 + 5).tolist()
-        ################################################################
-
-        # ---------- timer ----------
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        # ---------------------------
-    
-        # ---------- epoch summary ----------
-        print(f"Epoch {epoch:04d} completed in {elapsed_time:.2f} seconds | Train Loss : {avg_train_loss:.4f}\tVal Loss : {avg_val_loss:.4f}\tVal SRCC / MSE: {srcc:.4f} , {mse:.4f}")
-        # -----------------------------------
-
-        ########################################################################
-        train_pred = [f"{v: 05.2f}" for v in train_pred]
-        train_gt   = [f"{v: 05.2f}" for v in train_gt]
-        val_pred   = [f"{v: 05.2f}" for v in val_pred]
-        val_gt     = [f"{v: 05.2f}" for v in val_gt]
-        print(f"\ttrain pred   : {train_pred}")
-        print(f"\ttrain_gt     : {train_gt}")
-        print(f"\tval pred     : {val_pred}")
-        print(f"\tval_gt       : {val_gt}")
-        ########################################################################
-
-        # ---------- Scheduler ----------
-        scheduler.step(avg_val_loss)
-        # -------------------------------
-
-        # ---------- early-stop ----------
-        if srcc > best_srcc:
-            best_srcc, patience = srcc, 0
-            torch.save(model.state_dict(), os.path.join(chkpt_dir, "best_model.pt"))
-            print("✅  best model updated")
+        improved = np.isfinite(srcc) and srcc > best_srcc
+        if not os.path.isfile(best_model_path) or improved:
+            if improved:
+                best_srcc = srcc
+            patience = 0
+            save_trainable_checkpoint(model, best_model_path)
+            print("Best model updated")
         else:
             patience += 1
             if patience >= cfg["early_stop_patience"]:
-                print("⛔️ Early stopping (patience exhausted)")
+                print("Early stopping: patience exhausted")
                 break
-        # --------------------------------
 
-    return
+    return run_directory
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/train.json")
+    args = parser.parse_args()
+    train(load_config(args.config))
 
 
 if __name__ == "__main__":
-    config = utils.load_config("config.json")
-    train(config)
-
-
+    main()
