@@ -37,5 +37,15 @@ After it succeeds, submit full training:
 qsub scripts/abci/train.pbs
 ```
 
+Evaluate the verified best run on validation and test data:
+
+```bash
+qsub scripts/abci/evaluate_best.pbs
+```
+
+`evaluate_best.pbs` uses the low-point `gch51642` group, requests one shared
+GPU for at most 10 minutes, and writes metrics under the run's `evaluation/`
+directory. Update `BEST_RUN_DIR` in the script when evaluating another run.
+
 Use `qstat` to check the job state. PBS writes the merged stdout/stderr log in
 the directory from which the job was submitted.

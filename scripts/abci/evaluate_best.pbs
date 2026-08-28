@@ -1,0 +1,45 @@
+#!/bin/bash
+#PBS -N xacle27_eval
+#PBS -P gch51642
+#PBS -q rt_HG
+#PBS -l select=1
+#PBS -l walltime=00:10:00
+#PBS -j oe
+#PBS -m n
+
+set -euo pipefail
+cd "${PBS_O_WORKDIR}"
+
+source /etc/profile.d/modules.sh
+module purge
+module load python/3.12/3.12.9 cuda/13.0/13.0.1
+source .venv-abci/bin/activate
+
+export HF_HOME="${PBS_O_WORKDIR}/hf_cache"
+export TOKENIZERS_PARALLELISM=false
+
+BEST_RUN_DIR="${BEST_RUN_DIR:-chkpt/20260828_184757}"
+EVAL_DIR="${BEST_RUN_DIR}/evaluation"
+
+test -f "${BEST_RUN_DIR}/best_model.pt"
+test -f "${BEST_RUN_DIR}/config.json"
+mkdir -p "${EVAL_DIR}/validation" "${EVAL_DIR}/test"
+
+nvidia-smi
+
+python inference.py "${BEST_RUN_DIR}" validation
+python evaluate.py \
+  "${BEST_RUN_DIR}/inference_result_for_validation.csv" \
+  datasets/XACLE_dataset/meta_data/validation_average.csv \
+  "${EVAL_DIR}/validation"
+
+python inference.py "${BEST_RUN_DIR}" test
+python evaluate.py \
+  "${BEST_RUN_DIR}/inference_result_for_test.csv" \
+  datasets/XACLE_dataset/meta_data/test_average.csv \
+  "${EVAL_DIR}/test"
+
+echo "Validation metrics:"
+cat "${EVAL_DIR}/validation/evaluation_result.csv"
+echo "Test metrics:"
+cat "${EVAL_DIR}/test/evaluation_result.csv"

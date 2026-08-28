@@ -51,7 +51,7 @@ def inference():
     )
     test_loader = DataLoader(
         test_ds,
-        batch_size=1,
+        batch_size=cfg.get("inference_batch_size", cfg.get("val_batch_size", 1)),
         shuffle=False,
         num_workers=cfg["num_workers"],
         collate_fn=test_ds.collate_fn
@@ -71,13 +71,15 @@ def inference():
             if batch_index >= cfg.get("max_inference_batches", len(test_loader)):
                 break
             batch = utils.move_to_device(batch, device)
-            pred  = model(batch)
-            pred  = pred.detach().cpu().item()
+            pred = model(batch).detach().cpu()
             pred_mos = pred * 5.0 + 5.0
-            rows.append({
-                "wav_file_name" : os.path.basename(batch["wav_paths"][0]),
-                "pred_score": round(pred_mos,2)
-            })
+            rows.extend(
+                {
+                    "wav_file_name": os.path.basename(wav_path),
+                    "pred_score": round(score.item(), 2),
+                }
+                for wav_path, score in zip(batch["wav_paths"], pred_mos)
+            )
     # -------------------------------
 
     # -------- write results --------
