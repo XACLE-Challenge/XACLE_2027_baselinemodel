@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset
 import pandas as pd
 import os
+import soundfile as sf
 import torchaudio
 
 def get_dataset(txt_file_path, wav_dir, max_sec, sr, org_max=10.0, org_min=0.0):
@@ -11,6 +12,12 @@ def get_infdataset(txt_file_path, wav_dir, max_sec, sr):
     return XACLEINFDataset(txt_file_path, wav_dir, max_sec, sr)
 
 from torch.nn.functional import pad as pad1d 
+
+
+def load_audio(wav_path):
+    """Load a WAV file without relying on TorchCodec/FFmpeg."""
+    wav, sample_rate = sf.read(wav_path, dtype="float32", always_2d=True)
+    return torch.from_numpy(wav.T), sample_rate
 
 class XACLEDataset(Dataset):
     def __init__(
@@ -41,7 +48,7 @@ class XACLEDataset(Dataset):
     def __getitem__(self, idx):
         r = self.df.iloc[idx]
         wav_path        = os.path.join(self.wav_dir, r["wav_file_name"].lstrip("/"))
-        wav, source_sr   = torchaudio.load(wav_path)
+        wav, source_sr   = load_audio(wav_path)
         wav              = wav.mean(dim=0, keepdim=True)
         if source_sr != self.sr:
             wav = torchaudio.functional.resample(wav, source_sr, self.sr)
@@ -108,7 +115,7 @@ class XACLEINFDataset(Dataset):
     def __getitem__(self, idx):
         r = self.df.iloc[idx]
         wav_path = os.path.join(self.wav_dir, r["wav_file_name"].lstrip("/"))
-        wav, source_sr = torchaudio.load(wav_path)
+        wav, source_sr = load_audio(wav_path)
         wav = wav.mean(dim=0, keepdim=True)
         if source_sr != self.sr:
             wav = torchaudio.functional.resample(wav, source_sr, self.sr)

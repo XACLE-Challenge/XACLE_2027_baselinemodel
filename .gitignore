@@ -1,11 +1,15 @@
 __pycache__/
 *.pyc
 .venv/
+.venv-abci/
 .DS_Store
 
 .vscode/
 
 *.sh
+!scripts/
+!scripts/abci/
+!scripts/abci/*.sh
 
 datasets/XACLE_dataset
 
@@ -14,3 +18,8 @@ models/m2d/checkpoints/
 hf_cache/
 chkpt/
 chkpt_smoke/
+chkpt_abci_smoke/
+
+# PBS job output
+*.o[0-9]*
+*.e[0-9]*
