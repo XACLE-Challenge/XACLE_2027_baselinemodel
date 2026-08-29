@@ -25,28 +25,31 @@ nvidia-smi
 
 for VARIANT in C D; do
   CONFIG="configs/experiments/train_${VARIANT}.json"
-  OUTPUT_ROOT="${EXPERIMENT_DIR}/${VARIANT}"
-
   python train.py --config "${CONFIG}"
+done
+
+for MODEL_VARIANT in C D; do
+  OUTPUT_ROOT="${EXPERIMENT_DIR}/${MODEL_VARIANT}"
   RUN_DIR="$(find "${OUTPUT_ROOT}" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)"
   test -n "${RUN_DIR}"
   test -f "${RUN_DIR}/best_model.pt"
 
-  mkdir -p \
-    "${EXPERIMENT_DIR}/${VARIANT}/evaluation/validation" \
-    "${EXPERIMENT_DIR}/${VARIANT}/evaluation/test"
+  for DATA_VARIANT in C D; do
+    for SPLIT in validation test; do
+      METADATA="datasets/XACLE_dataset/meta_data/experiments/${SPLIT}_${DATA_VARIANT}.csv"
+      RESULT_NAME="${SPLIT}_${DATA_VARIANT}"
+      EVAL_DIR="${EXPERIMENT_DIR}/evaluation/model_${MODEL_VARIANT}/data_${DATA_VARIANT}/${SPLIT}"
+      mkdir -p "${EVAL_DIR}"
 
-  python inference.py "${RUN_DIR}" validation
-  python evaluate.py \
-    "${RUN_DIR}/inference_result_for_validation.csv" \
-    "datasets/XACLE_dataset/meta_data/experiments/validation_${VARIANT}.csv" \
-    "${EXPERIMENT_DIR}/${VARIANT}/evaluation/validation"
-
-  python inference.py "${RUN_DIR}" test
-  python evaluate.py \
-    "${RUN_DIR}/inference_result_for_test.csv" \
-    "datasets/XACLE_dataset/meta_data/experiments/test_${VARIANT}.csv" \
-    "${EXPERIMENT_DIR}/${VARIANT}/evaluation/test"
+      python inference.py "${RUN_DIR}" "${SPLIT}" \
+        --metadata-list "${METADATA}" \
+        --result-name "${RESULT_NAME}"
+      python evaluate.py \
+        "${RUN_DIR}/inference_result_for_${RESULT_NAME}.csv" \
+        "${METADATA}" \
+        "${EVAL_DIR}"
+    done
+  done
 done
 
 python scripts/experiments/summarize_cd_results.py "${EXPERIMENT_DIR}"

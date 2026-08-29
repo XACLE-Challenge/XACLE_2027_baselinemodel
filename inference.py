@@ -16,6 +16,14 @@ def inference():
     parser = argparse.ArgumentParser()
     parser.add_argument("checkpoint_directory")
     parser.add_argument("dataset", nargs="?", choices=["validation", "test"], default="validation")
+    parser.add_argument(
+        "--metadata-list",
+        help="Override the metadata CSV while retaining the selected WAV split",
+    )
+    parser.add_argument(
+        "--result-name",
+        help="Override the suffix used for the inference result CSV",
+    )
     args = parser.parse_args()
 
     chkpt_dir = args.checkpoint_directory
@@ -33,7 +41,7 @@ def inference():
     cfg = load_config(cfg_path)
     seed_everything(cfg["seed"])
     dataset_label   = f"{dataset_key}_list"
-    dataset_list    = cfg[dataset_label]
+    dataset_list    = args.metadata_list or cfg[dataset_label]
     dataset_wav_dir = os.path.join(cfg["wav_dir"], dataset_key)
     print("Perform inference on the following dataset with following checkpoint.")
     print(f"\tchkpt:        {chkpt_path}")
@@ -83,7 +91,8 @@ def inference():
     # -------------------------------
 
     # -------- write results --------
-    result_path = os.path.join(chkpt_dir, f"inference_result_for_{dataset_key}.csv")
+    result_name = args.result_name or dataset_key
+    result_path = os.path.join(chkpt_dir, f"inference_result_for_{result_name}.csv")
     print(f"Inference has completed. Results will be written to the following file: \n\t{result_path}")
     with open(result_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["wav_file_name", "pred_score"])

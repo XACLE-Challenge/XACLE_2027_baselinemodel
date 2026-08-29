@@ -68,10 +68,11 @@ Then submit both training/evaluation pipelines in one allocation:
 qsub scripts/abci/run_cd_experiment.pbs
 ```
 
-The job trains Model C and Model D independently, selects each best checkpoint
-using validation SRCC, evaluates the matching validation/test splits, and
-writes the combined results to `chkpt_cd/summary.csv`. It uses `gch51642` and
-requests one shared GPU for at most 15 minutes.
+The job trains Model C and Model D independently and selects each best
+checkpoint using its matching validation split. Both best models are then
+evaluated on Validation C, Validation D, Test C, and Test D, producing eight
+evaluation rows in `chkpt_cd/summary.csv`. It uses `gch51642` and requests one
+shared GPU for at most 15 minutes.
 
 Use `qstat` to check the job state. PBS writes the merged stdout/stderr log in
 the directory from which the job was submitted.

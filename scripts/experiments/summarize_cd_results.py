@@ -10,20 +10,29 @@ def main():
     args = parser.parse_args()
 
     rows = []
-    for variant in ("C", "D"):
-        for split in ("validation", "test"):
-            path = (
-                args.experiment_dir
-                / variant
-                / "evaluation"
-                / split
-                / "evaluation_result.csv"
-            )
-            metrics = pd.read_csv(path).set_index("metric")["value"].to_dict()
-            rows.append({"variant": variant, "split": split, **metrics})
+    for model_variant in ("C", "D"):
+        for data_variant in ("C", "D"):
+            for split in ("validation", "test"):
+                path = (
+                    args.experiment_dir
+                    / "evaluation"
+                    / f"model_{model_variant}"
+                    / f"data_{data_variant}"
+                    / split
+                    / "evaluation_result.csv"
+                )
+                metrics = pd.read_csv(path).set_index("metric")["value"].to_dict()
+                rows.append(
+                    {
+                        "model": model_variant,
+                        "data": data_variant,
+                        "split": split,
+                        **metrics,
+                    }
+                )
 
     summary = pd.DataFrame(rows)[
-        ["variant", "split", "SRCC", "LCC", "KTAU", "MSE", "N"]
+        ["model", "data", "split", "SRCC", "LCC", "KTAU", "MSE", "N"]
     ]
     output_path = args.experiment_dir / "summary.csv"
     summary.to_csv(output_path, index=False)
