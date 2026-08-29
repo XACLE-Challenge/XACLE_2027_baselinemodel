@@ -47,5 +47,31 @@ qsub scripts/abci/evaluate_best.pbs
 GPU for at most 10 minutes, and writes metrics under the run's `evaluation/`
 directory. Update `BEST_RUN_DIR` in the script when evaluating another run.
 
+## C/D split experiment
+
+Place `train_C.csv`, `validation_C.csv`, `test_C.csv`, `train_D.csv`,
+`validation_D.csv`, and `test_D.csv` under:
+
+```text
+datasets/XACLE_dataset/meta_data/experiments/
+```
+
+Validate the metadata before requesting a GPU:
+
+```bash
+python scripts/experiments/validate_cd_metadata.py
+```
+
+Then submit both training/evaluation pipelines in one allocation:
+
+```bash
+qsub scripts/abci/run_cd_experiment.pbs
+```
+
+The job trains Model C and Model D independently, selects each best checkpoint
+using validation SRCC, evaluates the matching validation/test splits, and
+writes the combined results to `chkpt_cd/summary.csv`. It uses `gch51642` and
+requests one shared GPU for at most 15 minutes.
+
 Use `qstat` to check the job state. PBS writes the merged stdout/stderr log in
 the directory from which the job was submitted.

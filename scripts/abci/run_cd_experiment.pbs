@@ -1,0 +1,52 @@
+#!/bin/bash
+#PBS -N xacle27_cd
+#PBS -P gch51642
+#PBS -q rt_HG
+#PBS -l select=1
+#PBS -l walltime=00:15:00
+#PBS -j oe
+#PBS -m n
+
+set -euo pipefail
+cd "${PBS_O_WORKDIR}"
+
+source /etc/profile.d/modules.sh
+module purge
+module load python/3.12/3.12.9 cuda/13.0/13.0.1
+source .venv-abci/bin/activate
+
+export HF_HOME="${PBS_O_WORKDIR}/hf_cache"
+export TOKENIZERS_PARALLELISM=false
+
+EXPERIMENT_DIR="chkpt_cd"
+
+python scripts/experiments/validate_cd_metadata.py
+nvidia-smi
+
+for VARIANT in C D; do
+  CONFIG="configs/experiments/train_${VARIANT}.json"
+  OUTPUT_ROOT="${EXPERIMENT_DIR}/${VARIANT}"
+
+  python train.py --config "${CONFIG}"
+  RUN_DIR="$(find "${OUTPUT_ROOT}" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)"
+  test -n "${RUN_DIR}"
+  test -f "${RUN_DIR}/best_model.pt"
+
+  mkdir -p \
+    "${EXPERIMENT_DIR}/${VARIANT}/evaluation/validation" \
+    "${EXPERIMENT_DIR}/${VARIANT}/evaluation/test"
+
+  python inference.py "${RUN_DIR}" validation
+  python evaluate.py \
+    "${RUN_DIR}/inference_result_for_validation.csv" \
+    "datasets/XACLE_dataset/meta_data/experiments/validation_${VARIANT}.csv" \
+    "${EXPERIMENT_DIR}/${VARIANT}/evaluation/validation"
+
+  python inference.py "${RUN_DIR}" test
+  python evaluate.py \
+    "${RUN_DIR}/inference_result_for_test.csv" \
+    "datasets/XACLE_dataset/meta_data/experiments/test_${VARIANT}.csv" \
+    "${EXPERIMENT_DIR}/${VARIANT}/evaluation/test"
+done
+
+python scripts/experiments/summarize_cd_results.py "${EXPERIMENT_DIR}"

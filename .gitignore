@@ -19,6 +19,7 @@ hf_cache/
 chkpt/
 chkpt_smoke/
 chkpt_abci_smoke/
+chkpt_cd/
 
 # PBS job output
 *.o[0-9]*
