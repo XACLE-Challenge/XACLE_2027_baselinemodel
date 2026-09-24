@@ -1,180 +1,264 @@
-# XACLE 2027 Baseline Model
+## 📌 Table of Contents
 
-Baseline implementation for automatic text–audio alignment scoring in the
-XACLE 2027 Challenge.
+- [Overview](#overview)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Project Structure](#project-structure)
+- [Usage](#usage)
+- [Evaluation Code](#evaluation-code)
+- [Result](#result)
+- [License](#license)
+- [Citation](#citation)
+- [Contributors](#contributors)
 
-The model uses the pretrained M2D-CLAP 2025 audio and text encoders as frozen
-feature extractors. Only a fully connected projector and scalar score
-predictor are trained.
+<h2 id="overview">📖 Overview</h2>
 
-```text
-audio ── M2D-CLAP audio encoder ──┐
-                                  ├─ concatenate → projector → score predictor
-text  ── M2D-CLAP text encoder  ──┘
+This repository contains the baseline model for automatic evaluation of
+text–audio alignment in
+[the second XACLE challenge](https://xacle.org/2027/). It provides a model
+trained to estimate subjective evaluation scores from text–audio pairs.
+
+In this baseline model, M2D-CLAP is used for both the Audio Encoder and Text
+Encoder. The pretrained encoders are frozen, and score prediction is performed
+using a fully connected projector and score predictor applied to the features
+extracted from these encoders.
+
+<h2 id="features">✨ Features</h2>
+
+- Automatically evaluates text–audio alignment scores.
+- Uses M2D-CLAP for both the Audio Encoder and Text Encoder, replacing the
+  BYOL-A and RoBERTa encoders used in the previous baseline.
+- Trains only the fully connected projector and score predictor while keeping
+  the pretrained M2D-CLAP encoders frozen.
+- Provides a ready-to-use pretrained baseline model through GitHub Releases.
+
+<h2 id="requirements">💻 Requirements</h2>
+
+- Python: Tested on 3.12.9
+- CUDA: Tested on 13.0
+- PyTorch: Tested on 2.13.0
+- Python packages (the core dependencies are listed in `requirements.txt`):
+  - einops==0.8.2
+  - nnAudio==0.3.4
+  - numpy==2.5.2
+  - pandas==2.3.3
+  - scipy==1.18.1
+  - SoundFile==0.14.0
+  - timm==1.0.28
+  - tqdm==4.70.0
+  - transformers==4.57.6
+
+<h2 id="installation">⚙️ Installation</h2>
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/XACLE-Challenge/XACLE_2027_baselinemodel_1.git
+cd XACLE_2027_baselinemodel_1
 ```
 
-## Status
+### 2. Install required packages
 
-- macOS/Apple Silicon CPU smoke test: verified
-- Real XACLE 2026 data, one-batch training test: verified
-- Short end-to-end train/inference/evaluation test: verified
-- ABCI/CUDA full training: pending
+```bash
+pip install -r requirements.txt
+```
 
-## Repository structure
+### 3. Install PyTorch
+
+Install PyTorch, TorchAudio, and TorchVision according to your environment.
+The following versions were used for this baseline:
+
+```bash
+pip install torch==2.13.0 torchaudio==2.11.0 torchvision==0.28.0 \
+  --index-url https://download.pytorch.org/whl/cu130
+```
+
+For a CPU environment or a different CUDA version, select the corresponding
+installation command from the official PyTorch installation guide.
+
+### 4. Download datasets and a pretrained baseline model
+
+- **Datasets**
+  - Download the XACLE Challenge 2027 development dataset from the
+    [dataset repository](https://github.com/XACLE-Challenge/XACLE_Challenge_2027_development_dataset).
+  - The development dataset is inherited from the XACLE Challenge 2026
+    dataset.
+  - After downloading the dataset, place `XACLE_dataset` in the `datasets`
+    directory.
+
+- **A pretrained baseline model**
+  - Download the pretrained model from the
+    [GitHub Releases page](https://github.com/XACLE-Challenge/XACLE_2027_baselinemodel_1/releases).
+  - The released baseline model directory contains:
+    - `best_model.pt`: Trained projector and score predictor parameters.
+    - `config.json`: Configuration used for training.
+  - After downloading the pretrained model, place its directory in `chkpt`.
+
+- **M2D-CLAP checkpoint**
+  - Download the standard 16 kHz M2D-CLAP 2025 checkpoint from the official
+    [nttcslab/m2d v0.5.0 release](https://github.com/nttcslab/m2d/releases/tag/v0.5.0).
+  - Place `checkpoint-30.pth` in the directory shown in
+    [Project Structure](#project-structure).
+  - See [`models/m2d/README.md`](models/m2d/README.md) for the verified
+    checkpoint SHA-256 value and third-party license information.
+
+- **Regarding the placement of these directories, please refer to the
+  [Project Structure](#project-structure).**
+
+<h2 id="project-structure">📂 Project Structure</h2>
 
 ```text
-.
+XACLE_2027_baselinemodel_1/
+├── README.md
+├── LICENSE
+├── requirements.txt
+├── train.py
+├── inference.py
+├── evaluate.py
 ├── configs/
-│   ├── train.json                 # Full training configuration
-│   └── mac_smoke.json             # Short CPU end-to-end test
+│   └── train.json
+├── chkpt/
+│   └── trained_baseline_model/                   # Need to download
 ├── datasets/
 │   ├── xacle_baseline_dataset.py
-│   └── XACLE_dataset/             # Local dataset; ignored by Git
+│   └── XACLE_dataset/                            # Need to download
+│       ├── meta_data/
+│       │   ├── train_average.csv
+│       │   ├── validation_average.csv
+│       │   └── test_average.csv
+│       └── wav/
+│           ├── train/
+│           ├── validation/
+│           └── test/
 ├── losses/
 │   └── loss_function.py
 ├── models/
 │   ├── xacle_baseline_model.py
-│   ├── m2d/
-│   │   ├── encoder.py
-│   │   ├── checkpoints/           # Local M2D weights; ignored by Git
-│   │   └── vendor/                # Official PortableM2D runtime and license
-├── tests/
-│   ├── test_checkpoint.py
-│   ├── test_config.py
-│   └── integration_smoke_test.py
-├── utils/
-│   ├── checkpoint.py
-│   ├── config.py
-│   ├── runtime.py
-│   └── utils.py
-├── train.py
-├── inference.py
-└── evaluate.py
+│   └── m2d/
+│       ├── encoder.py
+│       ├── checkpoints/                          # Need to download
+│       │   └── m2d_clap_vit_base-80x1001p16x16p16kpBpTI-2025/
+│       │       └── checkpoint-30.pth
+│       └── vendor/
+└── utils/
 ```
 
-## Environment setup
+<h2 id="usage">🚀 Usage</h2>
 
-Python 3.12.11 was used for the macOS smoke test.
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r requirements.txt
-```
-
-For CUDA systems, install the PyTorch build appropriate for the CUDA version
-before installing the remaining requirements.
-
-## M2D-CLAP checkpoint
-
-Download the standard 16 kHz M2D-CLAP 2025 checkpoint from the official
-[nttcslab/m2d v0.5.0 release](https://github.com/nttcslab/m2d/releases/tag/v0.5.0).
-
-Expected location:
-
-```text
-models/m2d/checkpoints/
-└── m2d_clap_vit_base-80x1001p16x16p16kpBpTI-2025/
-    └── checkpoint-30.pth
-```
-
-See `models/m2d/README.md` for runtime provenance and the verified checkpoint
-SHA-256 value. The checkpoint is not committed to this repository.
-
-## Dataset layout
-
-Place the XACLE dataset as follows:
-
-```text
-datasets/XACLE_dataset/
-├── meta_data/
-│   ├── train_average.csv
-│   ├── validation_average.csv
-│   └── test_average.csv
-└── wav/
-    ├── train/
-    ├── validation/
-    └── test/
-```
-
-Each metadata CSV must contain `wav_file_name`, `text`, and, for supervised
-splits, `average_score`.
-
-## Usage
-
-### Local integration test
-
-The integration test creates temporary WAV/CSV fixtures and verifies dataset
-loading, forward, loss, backward, encoder freezing, and head optimization.
-
-```bash
-python -m unittest discover -s tests -p 'test_*.py' -v
-python tests/integration_smoke_test.py
-```
-
-The training and inference configurations include a fixed `seed`. DataLoader
-shuffling, worker processes, NumPy, Python, and PyTorch are initialized from
-that value.
-
-### Short macOS end-to-end test
-
-```bash
-python train.py --config configs/mac_smoke.json
-```
-
-### Full training
+### For training (when learning from scratch)
 
 ```bash
 python train.py --config configs/train.json
 ```
 
-Each run creates a timestamped directory under the configured `output_dir`
-containing:
+- A directory named `chkpt` is created, and a timestamped subdirectory is
+  created for each training run.
+- The JSON file containing the resolved training settings is saved as
+  `config.json` in the created subdirectory.
+- The model with the highest validation SRCC is saved as `best_model.pt`.
+- Training logs are displayed in standard output and saved as `log.txt`.
+- Because the M2D-CLAP encoders are frozen, `best_model.pt` contains only the
+  fully connected projector and score predictor parameters.
 
-- `config.json`: resolved run configuration
-- `best_model.pt`: projector and score predictor weights only
-- `log.txt`: training log
-
-The frozen M2D-CLAP weights are intentionally excluded from the trained
-checkpoint, reducing it from approximately 1.6 GB to approximately 7 MB.
-
-### Inference
+### For inference
 
 ```bash
-python inference.py <checkpoint_directory> validation
-python inference.py <checkpoint_directory> test
+python inference.py <checkpoint_directory> <dataset_key>
 ```
 
-### Evaluation
+- `<checkpoint_directory>`: Path to the directory containing `best_model.pt`
+  and `config.json` (for example, `chkpt/trained_baseline_model`).
+- `<dataset_key>`: Specify the dataset used for inference. Enter either
+  `validation` or `test`.
+- Inference results are saved as
+  `inference_result_for_<dataset_key>.csv` in the checkpoint directory.
+
+Examples:
+
+```bash
+python inference.py chkpt/trained_baseline_model validation
+python inference.py chkpt/trained_baseline_model test
+```
+
+<h2 id="evaluation-code">✔ Evaluation Code</h2>
 
 ```bash
 python evaluate.py \
-  <inference_result.csv> \
-  datasets/XACLE_dataset/meta_data/validation_average.csv \
-  <output_directory>
+  <inference_csv_path> \
+  <ground_truth_csv_path> \
+  <save_results_dir>
 ```
 
-The evaluation reports SRCC, LCC, Kendall's tau-b, MSE, and sample count.
+- `<inference_csv_path>`: Path to the CSV file containing the inference
+  results.
+- `<ground_truth_csv_path>`: Path to the metadata CSV containing the
+  ground-truth `average_score` values.
+- `<save_results_dir>`: Directory in which `evaluation_result.csv` is saved.
+- The script calculates SRCC, LCC, KTAU, MSE, and the number of evaluated
+  samples.
 
-## Previous baseline
+Examples:
 
-The XACLE 2026 BYOL-A + RoBERTa implementation is not included in the XACLE
-2027 public source tree. It remains available from the repository's initial
-commit (`8d7e995`) when historical reference is needed.
+```bash
+python evaluate.py \
+  chkpt/trained_baseline_model/inference_result_for_validation.csv \
+  datasets/XACLE_dataset/meta_data/validation_average.csv \
+  chkpt/trained_baseline_model/evaluation/validation
 
-## Third-party code and licenses
+python evaluate.py \
+  chkpt/trained_baseline_model/inference_result_for_test.csv \
+  datasets/XACLE_dataset/meta_data/test_average.csv \
+  chkpt/trained_baseline_model/evaluation/test
+```
 
-`models/m2d/vendor/portable_m2d.py` is derived from the official
-[nttcslab/m2d](https://github.com/nttcslab/m2d) repository. Its upstream
-license is included at `models/m2d/vendor/LICENSE.pdf`. See
-`models/m2d/README.md` for the pinned upstream commit and local integration
-changes.
+<h2 id="result">💯 Results of baseline model</h2>
 
-The rest of this repository is distributed under the terms in `LICENSE`.
+The model was trained on the 7,500-sample XACLE Challenge 2026 training split.
+The best checkpoint was selected using the 3,000-sample validation split and
+then evaluated on the 3,000-sample test split.
 
-## Contributors
+### Validation data
 
-- Riki Takizawa — Kyoto Sangyo University
-- Yusuke Kanamori — The University of Tokyo
-- Yuki Okamoto — The University of Tokyo
+| Model | SRCC ↑ | LCC ↑ | KTAU ↑ | MSE ↓ |
+| :--- | ---: | ---: | ---: | ---: |
+| XACLE 2026 Baseline | 0.3844 | 0.3961 | 0.2646 | 4.8361 |
+| **XACLE 2027 M2D-CLAP Baseline** | **0.5844** | **0.5995** | **0.4186** | **3.6368** |
+
+### Test data
+
+| Model | SRCC ↑ | LCC ↑ | KTAU ↑ | MSE ↓ |
+| :--- | ---: | ---: | ---: | ---: |
+| XACLE 2026 Baseline | 0.3345 | 0.3420 | 0.2290 | 4.8110 |
+| **XACLE 2027 M2D-CLAP Baseline** | **0.5648** | **0.6142** | **0.3997** | **3.1847** |
+
+<h2 id="license">📄 License</h2>
+
+This project is licensed under the **MIT License**.
+
+You are free to use, modify, and distribute this software, with or without
+modifications, under the conditions of the MIT License. See the
+[`LICENSE`](LICENSE) file for the full license text.
+
+The portable M2D runtime includes its upstream license in
+`models/m2d/vendor/LICENSE.pdf`.
+
+<h2 id="citation">📚 Citation</h2>
+
+If you use the dataset, please cite the XACLE Challenge 2026 paper:
+
+```bibtex
+@INPROCEEDINGS{XACLE2026,
+  author={Okamoto, Yuki and Takizawa, Riki and Kishi, Minoru and Kanamori, Yusuke and Tonami, Noriyuki and Nagase, Ryotaro and Takamichi, Shinnosuke and Imoto, Keisuke},
+  booktitle={Proc. IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  title={XACLE Challenge 2026: The First X-to-Audio Alignment Challenge},
+  year={2026},
+  pages={21877-21879},
+}
+```
+
+<h2 id="contributors">🧑‍💻 Contributors</h2>
+
+- Riki Takizawa (Kyoto Sangyo University, Japan)
+- Yusuke Kanamori (The University of Tokyo, Japan)
+- Yuki Okamoto (The University of Tokyo, Japan)
