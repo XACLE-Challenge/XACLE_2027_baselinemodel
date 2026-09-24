@@ -1,4 +1,5 @@
 ## 📌 Table of Contents
+
 - [Overview](#overview)
 - [Features](#features)
 - [Requirements](#requirements)
@@ -13,168 +14,250 @@
 
 <h2 id="overview">📖 Overview</h2>
 
-This repository contains the baseline model for automatic evaluation of text–audio alignment in [the first XACLE challenge](https://xacle.org/index.html). It provides a model trained to estimate subjective evaluation scores from text–audio pairs. In the baseline model, BYOL-A is used as the audio encoder and RoBERTa as the text encoder, and score prediction is performed using the features extracted from these encoders. <br>We sincerely thank the authors for sharing the official code and facilitating the advancement of academia. <br><br>
-<p align="center">
-<img src="pics/task_overview.png" alt="Overview of score prediction of audio–text alignment" width="400">
-</p>
+This repository contains the baseline model for automatic evaluation of
+text–audio alignment in
+[the second XACLE challenge](https://xacle.org/2027/). It provides a model
+trained to estimate subjective evaluation scores from text–audio pairs.
+
+In this baseline model, M2D-CLAP is used for both the Audio Encoder and Text
+Encoder. The pretrained encoders are frozen, and score prediction is performed
+using a fully connected projector and score predictor applied to the features
+extracted from these encoders.
+
 <h2 id="features">✨ Features</h2>
 
 - Automatically evaluates text–audio alignment scores.
-- Supports BYOL-A (Audio Encoder) and RoBERTa (Text Encoder)
-- Provides ready-to-use trained baseline model.
+- Uses M2D-CLAP for both the Audio Encoder and Text Encoder, replacing the
+  BYOL-A and RoBERTa encoders used in the previous baseline.
+- Trains only the fully connected projector and score predictor while keeping
+  the pretrained M2D-CLAP encoders frozen.
+- Provides a ready-to-use pretrained baseline model through GitHub Releases.
 
 <h2 id="requirements">💻 Requirements</h2>
 
-- Python : Tested on 3.9.21
-- CUDA   : Tested on 11.8 (for GPU acceleration)
-- Python Packages (the core dependencies for this project are listed in requirements.txt)
-    - easydict==1.13
-    - librosa==0.9.2
-    - matplotlib==3.5.1
-    - nnAudio==0.3.3
-    - numpy==1.24.1
-    - pandas==1.4.1
-    - pytorch-lightning==1.6.0
-    - scikit-learn==1.0.2
-    - SoundFile==0.10.3.post1
-    - tqdm==4.66.5
-    - transformers==4.15.0
+- Python: Tested on 3.12.9
+- CUDA: Tested on 13.0
+- PyTorch: Tested on 2.13.0
+- Python packages (the core dependencies are listed in `requirements.txt`):
+  - einops==0.8.2
+  - nnAudio==0.3.4
+  - numpy==2.5.2
+  - pandas==2.3.3
+  - scipy==1.18.1
+  - SoundFile==0.14.0
+  - timm==1.0.28
+  - tqdm==4.70.0
+  - transformers==4.57.6
 
 <h2 id="installation">⚙️ Installation</h2>
 
 ### 1. Clone the repository
+
 ```bash
-git clone https://github.com/XACLE-Challenge/XACLE2026_baseline_model.git
-```
-```bash
-cd cloned-repository
-```
-### 2. Create and activate a virtual environment
-```bash
-python -m venv xacle_env && source xacle_env/bin/activate
+git clone https://github.com/XACLE-Challenge/XACLE_2027_baselinemodel_1.git
+cd XACLE_2027_baselinemodel_1
 ```
 
-### 3. Upgrade pip
-```bash
-python -m pip install --upgrade "pip<24.1"
-```
+### 2. Install required packages
 
-### 4. Install required packages
 ```bash
 pip install -r requirements.txt
 ```
 
-### 5. Install Torch
-Please install Torch and Torchaudio according to your environment. Below is an example of the version that has been confirmed to work in a CUDA 11.8 environment.
+### 3. Install PyTorch
+
+Install PyTorch, TorchAudio, and TorchVision according to your environment.
+The following versions were used for this baseline:
+
 ```bash
-pip install torch==2.2.0+cu118 torchaudio==2.2.0+cu118 \
-  --index-url https://download.pytorch.org/whl/cu118
+pip install torch==2.13.0 torchaudio==2.11.0 torchvision==0.28.0 \
+  --index-url https://download.pytorch.org/whl/cu130
 ```
 
-### 6. Download datasets and a pretrained baseline model
+For a CPU environment or a different CUDA version, select the corresponding
+installation command from the official PyTorch installation guide.
+
+### 4. Download datasets and a pretrained baseline model
+
 - **Datasets**
-  - To download the dataset, please send an email to [dataset@xacle.org](mailto:dataset@xacle.org) with “**Download dataset**” in the subject line. You will receive an automated reply with the download link.
+  - Download the XACLE Challenge 2027 development dataset from the
+    [dataset repository](https://github.com/XACLE-Challenge/XACLE_Challenge_2027_development_dataset).
+  - The development dataset is inherited from the XACLE Challenge 2026
+    dataset.
+  - After downloading the dataset, place `XACLE_dataset` in the `datasets`
+    directory.
 
+- **A pretrained baseline model**
+  - Download the pretrained model from the
+    [GitHub Releases page](https://github.com/XACLE-Challenge/XACLE_2027_baselinemodel_1/releases).
+  - The released baseline model directory contains:
+    - `best_model.pt`: Trained projector and score predictor parameters.
+    - `config.json`: Configuration used for training.
+  - After downloading the pretrained model, place its directory in `chkpt`.
 
-  - After downloading the dataset, please place it in the **datasets** directory.
-- **A prerained baseline model**
-  - A pretrained baseline model can be downloaded from [here](https://y-okamoto.sakura.ne.jp/XACLE_Challenge/2025/baseline_model/trained_baseline_model.zip)
-  - For details about the files contained within
-    - *best_model.pt* : The saved model
-    - *config.json* : The configuration file used for training
-    - *inference_result_for_validation.csv* : Inference results on the validation data using *best_model.pt*
-    - *log.txt* : Standart output results during training
-    - *metricts_result_for_validation.csv* : Evaluation results of the inference outputs in *inference_result_for_validation.csv*
-  - After downloading a pretrained model, please place it in the **chkpt** directory.
+- **M2D-CLAP checkpoint**
+  - Download the standard 16 kHz M2D-CLAP 2025 checkpoint from the official
+    [nttcslab/m2d v0.5.0 release](https://github.com/nttcslab/m2d/releases/tag/v0.5.0).
+  - Place `checkpoint-30.pth` in the directory shown in
+    [Project Structure](#project-structure).
+  - See [`models/m2d/README.md`](models/m2d/README.md) for the verified
+    checkpoint SHA-256 value and third-party license information.
 
-- **Regarding the placement of these directories, please refer to the [Project Structure](#project-structure).**
+- **Regarding the placement of these directories, please refer to the
+  [Project Structure](#project-structure).**
 
 <h2 id="project-structure">📂 Project Structure</h2>
 
-```bash
-xacle2026_baseline_model/
+```text
+XACLE_2027_baselinemodel_1/
 ├── README.md
 ├── LICENSE
 ├── requirements.txt
-├── config.json
-├── evaluate.py
-├── inference.py
 ├── train.py
-├── chkpt/trained_baseline_model/  # Need to Download
+├── inference.py
+├── evaluate.py
+├── configs/
+│   └── train.json
+├── chkpt/
+│   └── trained_baseline_model/                   # Need to download
 ├── datasets/
 │   ├── xacle_baseline_dataset.py
-│   └── XACLE_dataset/              # Need to Download
-├── losses/loss_function.py
+│   └── XACLE_dataset/                            # Need to download
+│       ├── meta_data/
+│       │   ├── train_average.csv
+│       │   ├── validation_average.csv
+│       │   └── test_average.csv
+│       └── wav/
+│           ├── train/
+│           ├── validation/
+│           └── test/
+├── losses/
+│   └── loss_function.py
 ├── models/
-│   ├── Byola.py
-│   ├── Roberta.py
 │   ├── xacle_baseline_model.py
-│   └── byola/chkpt/AudioNTT2022-BYOLA-64x96d2048.pth
-├── pics/
-└── utils/utils.py
+│   └── m2d/
+│       ├── encoder.py
+│       ├── checkpoints/                          # Need to download
+│       │   └── m2d_clap_vit_base-80x1001p16x16p16kpBpTI-2025/
+│       │       └── checkpoint-30.pth
+│       └── vendor/
+└── utils/
 ```
 
 <h2 id="usage">🚀 Usage</h2>
 
-### For training (When learning from scratch)
+### For training (when learning from scratch)
+
 ```bash
-python train.py
+python train.py --config configs/train.json
 ```
-- A directory named "chkpt" is created, and within it, subdirectories based on the time when the learning proguram was executed are created (e.g., 20250901_1200).
-- The JSON file (config.json) containing the learning settings is copied to the created subdirectory.
-- The best model is saved as "best_model.pt" in the subdirectory.
-- Training logs can be viewed via standard output and are saved as "log.txt" in the subdirectory created upon training completion.
-### For Inference
+
+- A directory named `chkpt` is created, and a timestamped subdirectory is
+  created for each training run.
+- The JSON file containing the resolved training settings is saved as
+  `config.json` in the created subdirectory.
+- The model with the highest validation SRCC is saved as `best_model.pt`.
+- Training logs are displayed in standard output and saved as `log.txt`.
+- Because the M2D-CLAP encoders are frozen, `best_model.pt` contains only the
+  fully connected projector and score predictor parameters.
+
+### For inference
+
 ```bash
-python inference.py <chkpt_subdir_name> <dataset_key>
+python inference.py <checkpoint_directory> <dataset_key>
 ```
-- Perform inference using the trained model.
-- Cmd-Line argument descriptions
-  - `<chkpt_subdir_name>`: Subdirectory name created during learning program execution (where the learning model is saved) (e.g., 20250901_1200)
-  - `<dataset_key>`: Specify which dataset to use for inference.　Enter either *validation or test. If no argument is provided, inference will be performed on the validation data by default.
-- Inference results are saved as "inferece_result_for_<dataset_key>.csv" in the subdirectory (`<chkpt_subdir_name>`).
-  - The inference results are stored with the audio file name as the column name and the prediction score as the column name.
+
+- `<checkpoint_directory>`: Path to the directory containing `best_model.pt`
+  and `config.json` (for example, `chkpt/trained_baseline_model`).
+- `<dataset_key>`: Specify the dataset used for inference. Enter either
+  `validation` or `test`.
+- Inference results are saved as
+  `inference_result_for_<dataset_key>.csv` in the checkpoint directory.
+
+Examples:
+
+```bash
+python inference.py chkpt/trained_baseline_model validation
+python inference.py chkpt/trained_baseline_model test
+```
 
 <h2 id="evaluation-code">✔ Evaluation Code</h2>
 
-### For evaluation of the score prediction results for the validation data
 ```bash
-python evaluate.py <inference_csv_path> <ground_truth_csv_path> <save_results_dir>
+python evaluate.py \
+  <inference_csv_path> \
+  <ground_truth_csv_path> \
+  <save_results_dir>
 ```
-- Cmd-Line argument descriptions
-  - `<inference_csv_path>`: Path to the CSV file containing the inference results for the validation data.
-  - `<ground_truth_csv_path>`: Path to the CSV file containing the ground-truth scores for the validation data in XACLE dataset (validation_average.csv). 
-  - `<save_results_dir>`: Directory where the evaluation result will be saved (the output file name is fixed as evaluation_result.csv)
-- Using the predicted scores and ground-truth scores for the validation data, it calculates SRCC, LCC, KTAU, and MSE.
-  - *This program cannot be used for predicting scores on test data because ground-truth is required.
-- The results for SRCC, LCC, KTAU, MSE, and the number of evaluation data are written to a file named evaluation_result.csv inside `<save_results_dir>`.
 
-<h2 id="result">💯 Results of baseline model for validation data</h2>
+- `<inference_csv_path>`: Path to the CSV file containing the inference
+  results.
+- `<ground_truth_csv_path>`: Path to the metadata CSV containing the
+  ground-truth `average_score` values.
+- `<save_results_dir>`: Directory in which `evaluation_result.csv` is saved.
+- The script calculates SRCC, LCC, KTAU, MSE, and the number of evaluated
+  samples.
 
+Examples:
 
-|  | SRCC | LCC | KTAU | MSE |
+```bash
+python evaluate.py \
+  chkpt/trained_baseline_model/inference_result_for_validation.csv \
+  datasets/XACLE_dataset/meta_data/validation_average.csv \
+  chkpt/trained_baseline_model/evaluation/validation
+
+python evaluate.py \
+  chkpt/trained_baseline_model/inference_result_for_test.csv \
+  datasets/XACLE_dataset/meta_data/test_average.csv \
+  chkpt/trained_baseline_model/evaluation/test
+```
+
+<h2 id="result">💯 Results of baseline model</h2>
+
+The model was trained on the 7,500-sample XACLE Challenge 2026 training split.
+The best checkpoint was selected using the 3,000-sample validation split and
+then evaluated on the 3,000-sample test split.
+
+### Validation data
+
+| Model | SRCC ↑ | LCC ↑ | KTAU ↑ | MSE ↓ |
 | :--- | ---: | ---: | ---: | ---: |
-| Baseline | 0.384 |  0.396 | 0.264 | 4.836 |
+| XACLE 2026 Baseline | 0.3844 | 0.3961 | 0.2646 | 4.8361 |
+| **XACLE 2027 M2D-CLAP Baseline** | **0.5844** | **0.5995** | **0.4186** | **3.6368** |
 
+### Test data
+
+| Model | SRCC ↑ | LCC ↑ | KTAU ↑ | MSE ↓ |
+| :--- | ---: | ---: | ---: | ---: |
+| XACLE 2026 Baseline | 0.3345 | 0.3420 | 0.2290 | 4.8110 |
+| **XACLE 2027 M2D-CLAP Baseline** | **0.5648** | **0.6142** | **0.3997** | **3.1847** |
 
 <h2 id="license">📄 License</h2>
 
 This project is licensed under the **MIT License**.
 
-You are free to use, modify, and distribute this software, with or without modifications, under the conditions of the MIT License. See the [LICENSE](./LICENSE) file for full licese text.
+You are free to use, modify, and distribute this software, with or without
+modifications, under the conditions of the MIT License. See the
+[`LICENSE`](LICENSE) file for the full license text.
+
+The portable M2D runtime includes its upstream license in
+`models/m2d/vendor/LICENSE.pdf`.
 
 <h2 id="citation">📚 Citation</h2>
-Under preparation...
-<!-- ```bibtex
-@hogehoge{xacle2026,
-    title={Xacle Challenge},
-    author={hogehoge},
-    journal={hogehoge},
-    year={hogehoge}
-}
-``` -->
 
-<h2 id="contributors">🧑‍💻Contributors</h2>
+If you use the dataset, please cite the XACLE Challenge 2026 paper:
+
+```bibtex
+@INPROCEEDINGS{XACLE2026,
+  author={Okamoto, Yuki and Takizawa, Riki and Kishi, Minoru and Kanamori, Yusuke and Tonami, Noriyuki and Nagase, Ryotaro and Takamichi, Shinnosuke and Imoto, Keisuke},
+  booktitle={Proc. IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  title={XACLE Challenge 2026: The First X-to-Audio Alignment Challenge},
+  year={2026},
+  pages={21877-21879},
+}
+```
+
+<h2 id="contributors">🧑‍💻 Contributors</h2>
 
 - Riki Takizawa (Kyoto Sangyo University, Japan)
 - Yusuke Kanamori (The University of Tokyo, Japan)

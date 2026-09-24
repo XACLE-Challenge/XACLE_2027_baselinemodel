@@ -1,8 +1,16 @@
 __pycache__/
 *.pyc
+.venv/
+.DS_Store
 
 .vscode/
 
-*.sh
-
 datasets/XACLE_dataset
+
+# Local model weights and caches
+models/m2d/checkpoints/
+hf_cache/
+chkpt/
+chkpt_smoke/
+chkpt_cd/
+release/

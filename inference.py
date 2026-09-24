@@ -1,44 +1,47 @@
+import argparse
 import os
 import torch
-import numpy as np
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
-from models.Byola import get_normalizer
 from models.xacle_baseline_model import XACLEBaselineModel
 from datasets.xacle_baseline_dataset import get_infdataset
 import utils.utils as utils
+from utils.checkpoint import load_trainable_checkpoint
+from utils.config import load_config
+from utils.runtime import seed_everything
 from tqdm import tqdm
 import csv
-import sys
-import os
 
 def inference():
     # -------- initial setup --------
-    if len(sys.argv) < 2:
-        print("Usage: ptyhon inference.py chkpt_dir_name")
-        sys.exit(1)
-    chkpt_dir = os.path.join("./chkpt", sys.argv[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("checkpoint_directory")
+    parser.add_argument("dataset", nargs="?", choices=["validation", "test"], default="validation")
+    parser.add_argument(
+        "--metadata-list",
+        help="Override the metadata CSV while retaining the selected WAV split",
+    )
+    parser.add_argument(
+        "--result-name",
+        help="Override the suffix used for the inference result CSV",
+    )
+    args = parser.parse_args()
+
+    chkpt_dir = args.checkpoint_directory
     if not os.path.isdir(chkpt_dir):
-        print(f"Error: CheckPoint Directory {chkpt_dir} does not exist.")
-        sys.exit(1)
+        chkpt_dir = os.path.join("./chkpt", chkpt_dir)
+    if not os.path.isdir(chkpt_dir):
+        parser.error(f"checkpoint directory does not exist: {chkpt_dir}")
     chkpt_path = os.path.join(chkpt_dir, "best_model.pt")
     cfg_path   = os.path.join(chkpt_dir, "config.json")
     if not os.path.isfile(chkpt_path):
-        print(f"Error: Expected CheckPoint does not exist.")
-        sys.exit(1)
+        parser.error(f"checkpoint does not exist: {chkpt_path}")
     if not os.path.isfile(cfg_path):
-        print(f"Error: Expected Config file does not exist")
-    if len(sys.argv) == 2:
-        dataset_key = "validation"
-    elif sys.argv[2] == "validation":
-        dataset_key = "validation"
-    elif sys.argv[2] == "test":
-        dataset_key = "test"
-    else:
-        print("Error: Specify the evaluation dataset using the third command-line arguments.: 'validation' or 'test'")
-    cfg = utils.load_config(cfg_path)
+        parser.error(f"run config does not exist: {cfg_path}")
+    dataset_key = args.dataset
+    cfg = load_config(cfg_path)
+    seed_everything(cfg["seed"])
     dataset_label   = f"{dataset_key}_list"
-    dataset_list    = cfg[dataset_label]
+    dataset_list    = args.metadata_list or cfg[dataset_label]
     dataset_wav_dir = os.path.join(cfg["wav_dir"], dataset_key)
     print("Perform inference on the following dataset with following checkpoint.")
     print(f"\tchkpt:        {chkpt_path}")
@@ -47,48 +50,49 @@ def inference():
     device = torch.device(cfg["device"])
     # -------------------------------
 
-    # -------- tokenizer / dataset / dataloader --------
-    tokenizer = AutoTokenizer.from_pretrained(cfg["text_encoder"]["pretrained_model"], cache_dir="./hf_cache")
+    # -------- dataset / dataloader --------
     test_ds   = get_infdataset(
         txt_file_path=dataset_list,
         wav_dir=dataset_wav_dir,
-        tokenizer=tokenizer,
         max_sec=cfg["max_len"],
-        sr=cfg["audio_encoder"]["sample_rate"]
+        sr=cfg["m2d_clap"]["sample_rate"]
     )
     test_loader = DataLoader(
         test_ds,
-        batch_size=1,
+        batch_size=cfg.get("inference_batch_size", cfg.get("val_batch_size", 1)),
         shuffle=False,
         num_workers=cfg["num_workers"],
         collate_fn=test_ds.collate_fn
     )
     # -------------------------------------------------
 
-    # -------- model / normalizer --------
+    # -------- model --------
     model = XACLEBaselineModel(cfg, device).to(device)
-    chkpt = torch.load(chkpt_path, map_location=device)
-    model.load_state_dict(chkpt, strict=True)
+    load_trainable_checkpoint(model, chkpt_path, map_location=device)
     model.eval()
-    normalizer = get_normalizer(cfg, dataset_label)
     # ------------------------------------
 
     # -------- run inference --------
     rows = []
     with torch.no_grad():
-        for batch in tqdm(test_loader):
+        for batch_index, batch in enumerate(tqdm(test_loader)):
+            if batch_index >= cfg.get("max_inference_batches", len(test_loader)):
+                break
             batch = utils.move_to_device(batch, device)
-            pred  = model.forward(batch, normalizer)
-            pred  = pred.detach().cpu().item()
+            pred = model(batch).detach().cpu()
             pred_mos = pred * 5.0 + 5.0
-            rows.append({
-                "wav_file_name" : os.path.basename(batch["wav_paths"][0]),
-                "pred_score": round(pred_mos,2)
-            })
+            rows.extend(
+                {
+                    "wav_file_name": os.path.basename(wav_path),
+                    "pred_score": round(score.item(), 2),
+                }
+                for wav_path, score in zip(batch["wav_paths"], pred_mos)
+            )
     # -------------------------------
 
     # -------- write results --------
-    result_path = os.path.join(chkpt_dir, f"inference_result_for_{dataset_key}.csv")
+    result_name = args.result_name or dataset_key
+    result_path = os.path.join(chkpt_dir, f"inference_result_for_{result_name}.csv")
     print(f"Inference has completed. Results will be written to the following file: \n\t{result_path}")
     with open(result_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["wav_file_name", "pred_score"])
