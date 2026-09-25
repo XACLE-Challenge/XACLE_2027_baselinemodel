@@ -76,7 +76,7 @@ pip install torch==2.13.0 torchaudio==2.11.0 torchvision==0.28.0 \
 For a CPU environment or a different CUDA version, select the corresponding
 installation command from the official PyTorch installation guide.
 
-### 4. Download datasets and a pretrained baseline model
+### 4. Download datasets, the pretrained baseline model, and the M2D-CLAP checkpoint
 
 - **Datasets**
   - Download the XACLE Challenge 2027 development dataset from the
@@ -88,13 +88,13 @@ installation command from the official PyTorch installation guide.
     `datasets` directory. The resulting path must be
     `datasets/XACLE_Challenge_2027_development_dataset/`.
 
-- **A pretrained baseline model**
+- **Pretrained baseline model**
   - Download the pretrained model from the
     [GitHub Releases page](https://github.com/XACLE-Challenge/XACLE_2027_baselinemodel/releases).
   - The released baseline model directory contains:
     - `best_model.pt`: Trained projector and score predictor parameters.
     - `config.json`: Configuration used for training.
-  - After downloading the pretrained model, place its directory in `chkpt`.
+  - After downloading the pretrained model, place its directory under `chkpt`.
 
 - **M2D-CLAP checkpoint**
   - From the assets on the official
@@ -163,7 +163,7 @@ XACLE_2027_baselinemodel/
 
 <h2 id="usage">🚀 Usage</h2>
 
-### For training (when learning from scratch)
+### For training (from scratch)
 
 ```bash
 python train.py --config configs/train.json
