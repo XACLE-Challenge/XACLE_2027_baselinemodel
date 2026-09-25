@@ -16,22 +16,21 @@
 
 This repository contains the baseline model for automatic evaluation of
 text–audio alignment in
-[the second XACLE challenge](https://xacle.org/2027/). It provides a model
+[XACLE Challenge 2027](https://xacle.org/2027/). It provides a model
 trained to estimate subjective evaluation scores from text–audio pairs.
 
-In this baseline model, M2D-CLAP is used for both the Audio Encoder and Text
-Encoder. The pretrained encoders are frozen, and score prediction is performed
+In this baseline model, M2D-CLAP is used for both the audio encoder and text
+encoder. The pretrained encoders are frozen, and score prediction is performed
 using a fully connected projector and score predictor applied to the features
 extracted from these encoders.
 
 <h2 id="features">✨ Features</h2>
 
 - Automatically evaluates text–audio alignment scores.
-- Uses M2D-CLAP for both the Audio Encoder and Text Encoder, replacing the
-  BYOL-A and RoBERTa encoders used in the previous baseline.
+- Uses M2D-CLAP for both the audio encoder and text encoder.
 - Trains only the fully connected projector and score predictor while keeping
   the pretrained M2D-CLAP encoders frozen.
-- Provides a ready-to-use pretrained baseline model through GitHub Releases.
+- Provides a ready-to-use pretrained baseline model through GitHub releases.
 
 <h2 id="requirements">💻 Requirements</h2>
 
@@ -54,8 +53,8 @@ extracted from these encoders.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/XACLE-Challenge/XACLE_2027_baselinemodel_1.git
-cd XACLE_2027_baselinemodel_1
+git clone https://github.com/XACLE-Challenge/XACLE_2027_baselinemodel.git
+cd XACLE_2027_baselinemodel
 ```
 
 ### 2. Install required packages
@@ -91,7 +90,7 @@ installation command from the official PyTorch installation guide.
 
 - **A pretrained baseline model**
   - Download the pretrained model from the
-    [GitHub Releases page](https://github.com/XACLE-Challenge/XACLE_2027_baselinemodel_1/releases).
+    [GitHub Releases page](https://github.com/XACLE-Challenge/XACLE_2027_baselinemodel/releases).
   - The released baseline model directory contains:
     - `best_model.pt`: Trained projector and score predictor parameters.
     - `config.json`: Configuration used for training.
