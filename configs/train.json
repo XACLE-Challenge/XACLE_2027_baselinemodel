@@ -1,8 +1,8 @@
 {
-    "train_list": "./datasets/XACLE_dataset/meta_data/train_average.csv",
-    "validation_list": "./datasets/XACLE_dataset/meta_data/validation_average.csv",
-    "test_list": "./datasets/XACLE_dataset/meta_data/test_average.csv",
-    "wav_dir": "./datasets/XACLE_dataset/wav",
+    "train_list": "./datasets/XACLE_Challenge_2027_development_dataset/meta_data/train_average.csv",
+    "validation_list": "./datasets/XACLE_Challenge_2027_development_dataset/meta_data/validation_average.csv",
+    "test_list": "./datasets/XACLE_Challenge_2027_development_dataset/meta_data/test_average.csv",
+    "wav_dir": "./datasets/XACLE_Challenge_2027_development_dataset/wav",
     "output_dir": "./chkpt",
     "batch_size": 12,
     "val_batch_size": 12,

@@ -5,6 +5,7 @@ __pycache__/
 
 .vscode/
 
+datasets/XACLE_Challenge_2027_development_dataset
 datasets/XACLE_dataset
 
 # Local model weights and caches

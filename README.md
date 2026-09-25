@@ -84,8 +84,10 @@ installation command from the official PyTorch installation guide.
     [dataset repository](https://github.com/XACLE-Challenge/XACLE_Challenge_2027_development_dataset).
   - The development dataset is inherited from the XACLE Challenge 2026
     dataset.
-  - After downloading the dataset, place `XACLE_dataset` in the `datasets`
-    directory.
+  - After downloading and extracting the dataset, place the
+    `XACLE_Challenge_2027_development_dataset` directory directly under the
+    `datasets` directory. The resulting path must be
+    `datasets/XACLE_Challenge_2027_development_dataset/`.
 
 - **A pretrained baseline model**
   - Download the pretrained model from the
@@ -138,7 +140,7 @@ XACLE_2027_baselinemodel_1/
 │   └── trained_baseline_model/                   # Need to download
 ├── datasets/
 │   ├── xacle_baseline_dataset.py
-│   └── XACLE_dataset/                            # Need to download
+│   └── XACLE_Challenge_2027_development_dataset/ # Need to download
 │       ├── meta_data/
 │       │   ├── train_average.csv
 │       │   ├── validation_average.csv
@@ -219,12 +221,12 @@ Examples:
 ```bash
 python evaluate.py \
   chkpt/trained_baseline_model/inference_result_for_validation.csv \
-  datasets/XACLE_dataset/meta_data/validation_average.csv \
+  datasets/XACLE_Challenge_2027_development_dataset/meta_data/validation_average.csv \
   chkpt/trained_baseline_model/evaluation/validation
 
 python evaluate.py \
   chkpt/trained_baseline_model/inference_result_for_test.csv \
-  datasets/XACLE_dataset/meta_data/test_average.csv \
+  datasets/XACLE_Challenge_2027_development_dataset/meta_data/test_average.csv \
   chkpt/trained_baseline_model/evaluation/test
 ```
 
