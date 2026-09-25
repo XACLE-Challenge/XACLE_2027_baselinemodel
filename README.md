@@ -96,10 +96,26 @@ installation command from the official PyTorch installation guide.
   - After downloading the pretrained model, place its directory in `chkpt`.
 
 - **M2D-CLAP checkpoint**
-  - Download the standard 16 kHz M2D-CLAP 2025 checkpoint from the official
-    [nttcslab/m2d v0.5.0 release](https://github.com/nttcslab/m2d/releases/tag/v0.5.0).
-  - Place `checkpoint-30.pth` in the directory shown in
-    [Project Structure](#project-structure).
+  - From the assets on the official
+    [nttcslab/m2d v0.5.0 release](https://github.com/nttcslab/m2d/releases/tag/v0.5.0),
+    download the following ZIP file:
+
+    ```text
+    m2d_clap_vit_base-80x1001p16x16p16kpBpTI-2025.zip
+    ```
+
+    This baseline uses the standard M2D-CLAP 2025 model. Do not select the
+    `m2d_clap_vit_base-80x1001p80x2p16kpBpTI-2025.zip` model with 20 ms
+    temporal resolution.
+  - Extract the downloaded ZIP file and place the extracted directory under
+    `models/m2d/checkpoints/`. The final checkpoint path must be:
+
+    ```text
+    models/m2d/checkpoints/
+    └── m2d_clap_vit_base-80x1001p16x16p16kpBpTI-2025/
+        └── checkpoint-30.pth
+    ```
+
   - See [`models/m2d/README.md`](models/m2d/README.md) for the verified
     checkpoint SHA-256 value and third-party license information.
 
