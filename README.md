@@ -126,7 +126,7 @@ installation command from the official PyTorch installation guide.
 <h2 id="project-structure">📂 Project Structure</h2>
 
 ```text
-XACLE_2027_baselinemodel_1/
+XACLE_2027_baselinemodel/
 ├── README.md
 ├── LICENSE
 ├── requirements.txt
