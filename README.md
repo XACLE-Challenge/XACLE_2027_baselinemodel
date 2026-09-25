@@ -270,7 +270,7 @@ If you use the dataset, please cite the XACLE Challenge 2026 paper:
   booktitle={Proc. IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
   title={XACLE Challenge 2026: The First X-to-Audio Alignment Challenge},
   year={2026},
-  pages={21877-21879},
+  pages={21877--21879},
 }
 ```
 
